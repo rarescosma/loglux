@@ -20,11 +20,7 @@ impl GhettoConcat {
         Self { buffer, len: s1.len() + s2.len() }
     }
 
-    fn as_slice(&self) -> &[u8] {
-        &self.buffer[..self.len]
-    }
+    fn as_slice(&self) -> &[u8] { &self.buffer[..self.len] }
 
-    pub fn as_str(&self) -> &str {
-        unsafe { str::from_utf8_unchecked(self.as_slice()) }
-    }
+    pub fn as_str(&self) -> &str { unsafe { str::from_utf8_unchecked(self.as_slice()) } }
 }

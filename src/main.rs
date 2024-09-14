@@ -1,8 +1,7 @@
-#![no_main]
+mod cli;
 mod concat;
 
 use std::{
-    ffi::CStr,
     fs,
     fs::File,
     io::{Error as IoError, ErrorKind, Write},
@@ -18,11 +17,11 @@ use std::{
 };
 
 use concat::GhettoConcat;
+use cli::{help, parse_args, Mode};
 
 type Res<T> = Result<T, IoError>;
 type Brightness = u32;
 
-const NUM_STEPS: f64 = 100_f64;
 const BUFFER_SIZE: usize = 30;
 
 struct Controller {
@@ -74,32 +73,32 @@ impl Controller {
         self.path.file_name().and_then(|f| f.to_str()).ok_or(IoError::from(ErrorKind::Other))
     }
 
-    fn current_step(&self) -> isize {
-        (NUM_STEPS * (self.b.max(1) as f64).log(self.max_b as f64)).round() as _
+    fn current_step(&self, num_steps: f64) -> isize {
+        (num_steps * (self.b.max(1) as f64).log(self.max_b as f64)).round() as _
     }
 
-    fn b_from_step(&self, step_no: isize) -> Brightness {
-        (self.max_b as f64).powf(step_no as f64 / NUM_STEPS) as _
+    fn b_from_step(&self, step_no: isize, num_steps: f64) -> Brightness {
+        (self.max_b as f64).powf(step_no as f64 / num_steps) as _
     }
 
-    fn step_up(&self) -> Brightness {
-        let mut step = self.current_step();
+    fn step_up(&self, num_steps: f64) -> Brightness {
+        let mut step = self.current_step(num_steps);
         let mut new_b = self.b;
 
         while new_b <= self.b {
             step += 1;
-            new_b = self.b_from_step(step);
+            new_b = self.b_from_step(step, num_steps);
         }
         new_b.min(self.max_b)
     }
 
-    fn step_down(&self) -> Brightness {
-        let mut step = self.current_step();
+    fn step_down(&self, num_steps: f64) -> Brightness {
+        let mut step = self.current_step(num_steps);
         let mut new_b = self.b;
 
         while new_b >= self.b && step >= 0 {
             step -= 1;
-            new_b = self.b_from_step(step);
+            new_b = self.b_from_step(step, num_steps);
         }
 
         new_b
@@ -126,17 +125,14 @@ fn best_controller(start_path: &PathBuf) -> Option<Controller> {
     })
 }
 
-#[no_mangle]
-pub fn main(_argc: i32, _argv: *const *const i8) -> Res<()> {
-    #[inline]
-    fn bail() {
-        eprintln!("pass me either 'up' or 'down'");
-        process::exit(1);
-    }
-
-    if _argc < 2 {
-        bail();
-    }
+pub fn main() -> Res<()> {
+    let args = {
+        let args = parse_args();
+        if parse_args().is_err() {
+            help()
+        }
+        args.unwrap()
+    };
 
     // there can be only one
     let s = SocketAddr::from_abstract_name("lux_lock".as_bytes())?;
@@ -144,25 +140,10 @@ pub fn main(_argc: i32, _argv: *const *const i8) -> Res<()> {
         process::exit(2);
     }
 
-    // initialize a pointer to store the current argument
-    let mut current_arg = _argv;
-
-    // skip the program name
-    current_arg = unsafe { current_arg.offset(1) };
-    if current_arg.is_null() {
-        bail();
-    }
-
-    let mode = unsafe { str::from_utf8_unchecked(CStr::from_ptr(*current_arg).to_bytes()) };
-    if mode != "up" && mode != "down" {
-        bail();
-    }
-
-    if let Some(mut controller) = best_controller(&PathBuf::from("/sys/class/backlight")) {
-        let _ = match mode {
-            "up" => Some(controller.step_up()),
-            "down" => Some(controller.step_down()),
-            _ => None,
+    if let Some(mut controller) = best_controller(&args.start_path) {
+        let _ = match args.mode {
+            Mode::Up => Some(controller.step_up(args.num_steps)),
+            Mode::Down => Some(controller.step_down(args.num_steps)),
         }
         .and_then(|b| if controller.b != b { controller.set_brightness(b).ok() } else { None })
         .and_then(|_| controller.notify().ok());
