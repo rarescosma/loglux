@@ -1,31 +1,41 @@
 #![no_main]
-
-mod error;
+mod concat;
 
 use std::{
-    error::Error,
+    ffi::CStr,
     fs,
-    io::Write,
+    fs::File,
+    io::{Error as IoError, ErrorKind, Write},
     os::{
         linux::net::SocketAddrExt,
-        unix::net::{SocketAddr, UnixListener},
+        unix::{
+            fs::FileExt,
+            net::{SocketAddr, UnixListener},
+        },
     },
     path::PathBuf,
-    process,
+    process, str,
 };
-use std::ffi::CStr;
-use crate::error::LuxError;
 
-type Res<T> = Result<T, Box<dyn Error>>;
+use concat::GhettoConcat;
+
+type Res<T> = Result<T, IoError>;
 type Brightness = u32;
 
 const NUM_STEPS: f64 = 100_f64;
+const BUFFER_SIZE: usize = 30;
 
-#[derive(Debug)]
 struct Controller {
     path: PathBuf,
     max_b: Brightness,
     b: Brightness,
+}
+
+fn int_from_file(p: PathBuf) -> Option<u32> {
+    let mut b_buf = [b' '; BUFFER_SIZE];
+    let _ = File::open(p).ok().and_then(|f| f.read_at(&mut b_buf, 0).ok());
+
+    str::from_utf8(&b_buf).ok().and_then(|x| x.trim().parse::<u32>().ok())
 }
 
 impl Controller {
@@ -36,11 +46,10 @@ impl Controller {
             .stdin(process::Stdio::piped())
             .spawn()?;
 
-        let mut buffer = itoa::Buffer::new();
-        tee.stdin
-            .as_mut()
-            .ok_or(LuxError::boxed("no stdin :("))?
-            .write_all(buffer.format(new_b).as_bytes())?;
+        if let Some(stdin) = tee.stdin.as_mut() {
+            let mut buffer = itoa::Buffer::new();
+            stdin.write_all(buffer.format(new_b).as_bytes())?;
+        }
 
         tee.wait()?;
         self.b = new_b;
@@ -48,12 +57,21 @@ impl Controller {
     }
 
     fn notify(&self) -> Res<()> {
-        let perc = format!("int:value:{:.2}", (self.b * 100) as f64 / self.max_b as f64);
+        let mut buf = itoa::Buffer::new();
+        let proc = GhettoConcat::new(
+            "int:value:".as_bytes(),
+            buf.format(self.b * 100 / self.max_b).as_bytes(),
+        );
+
         process::Command::new("notify-send")
-            .arg(self.path.file_name().unwrap().to_str().unwrap())
-            .args(["-h", &perc, "-h", "string:synchronous:volume"])
+            .arg(self.name()?)
+            .args(["-h", proc.as_str(), "-h", "string:synchronous:volume"])
             .output()?;
         Ok(())
+    }
+
+    fn name(&self) -> Result<&str, IoError> {
+        self.path.file_name().and_then(|f| f.to_str()).ok_or(IoError::from(ErrorKind::Other))
     }
 
     fn current_step(&self) -> isize {
@@ -88,64 +106,59 @@ impl Controller {
     }
 }
 
-fn best_controller(start_path: &PathBuf) -> Res<Controller> {
-    let mut best_c: Option<PathBuf> = None;
+fn best_controller(start_path: &PathBuf) -> Option<Controller> {
+    let mut path: Option<PathBuf> = None;
     let mut best_max = 0;
 
-    for entry in fs::read_dir(start_path)?.flatten() {
-        let path = entry.path();
-        if let Ok(contents) = fs::read_to_string(path.join("max_brightness")) {
-            if let Ok(max_b) = contents.trim().parse::<u32>() {
-                if max_b > best_max {
-                    best_max = max_b;
-                    best_c = Some(path);
-                }
+    for entry in fs::read_dir(start_path).ok()?.flatten() {
+        let c_path = entry.path();
+        if let Some(max_b) = int_from_file(c_path.join("max_brightness")) {
+            if max_b > best_max {
+                best_max = max_b;
+                path = Some(c_path);
             }
         }
     }
 
-    if let Some(best_c) = best_c {
-        let b_path = best_c.join("brightness");
-        let b = fs::read_to_string(&b_path)?.trim().parse::<u32>()?;
-        return Ok(Controller { path: best_c, max_b: best_max, b });
-    }
-    Err(LuxError::boxed("could not find a suitable controller"))
-}
-
-fn bail() {
-    process::exit(1);
+    path.and_then(|path| {
+        let b_path = path.join("brightness");
+        Some(Controller { path, max_b: best_max, b: int_from_file(b_path)? })
+    })
 }
 
 #[no_mangle]
-pub fn main(_argc: i32, _argv: *const *const i8) -> isize {
+pub fn main(_argc: i32, _argv: *const *const i8) -> Res<()> {
+    #[inline]
+    fn bail() {
+        eprintln!("pass me either 'up' or 'down'");
+        process::exit(1);
+    }
+
     if _argc < 2 {
         bail();
     }
 
-    let _: Res<()> = (|| {
-        // there can be only one
-        let s = SocketAddr::from_abstract_name("lux_lock".as_bytes())?;
-        if UnixListener::bind_addr(&s).is_err() {
-            process::exit(2);
-        }
+    // there can be only one
+    let s = SocketAddr::from_abstract_name("lux_lock".as_bytes())?;
+    if UnixListener::bind_addr(&s).is_err() {
+        process::exit(2);
+    }
 
-        // Initialize a pointer to store the current argument
-        let mut current_arg = _argv;
+    // initialize a pointer to store the current argument
+    let mut current_arg = _argv;
 
-        // Skip the program name
-        current_arg = unsafe { current_arg.offset(1) };
-        if current_arg.is_null() {
-            bail();
-        }
+    // skip the program name
+    current_arg = unsafe { current_arg.offset(1) };
+    if current_arg.is_null() {
+        bail();
+    }
 
-        let mode =
-            std::str::from_utf8(unsafe { CStr::from_ptr(*current_arg).to_bytes() }).expect("args");
-        if mode != "up" && mode != "down" {
-            bail();
-        }
+    let mode = unsafe { str::from_utf8_unchecked(CStr::from_ptr(*current_arg).to_bytes()) };
+    if mode != "up" && mode != "down" {
+        bail();
+    }
 
-        let mut controller = best_controller(&PathBuf::from("/sys/class/backlight"))?;
-
+    if let Some(mut controller) = best_controller(&PathBuf::from("/sys/class/backlight")) {
         let _ = match mode {
             "up" => Some(controller.step_up()),
             "down" => Some(controller.step_down()),
@@ -153,8 +166,7 @@ pub fn main(_argc: i32, _argv: *const *const i8) -> isize {
         }
         .and_then(|b| if controller.b != b { controller.set_brightness(b).ok() } else { None })
         .and_then(|_| controller.notify().ok());
+    }
 
-        Ok(())
-    })();
-    0
+    Ok(())
 }
