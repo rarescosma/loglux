@@ -1,0 +1,6 @@
+reorder_imports = false
+fn_single_line = true
+use_small_heuristics = "max"
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+unstable_features = true

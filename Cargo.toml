@@ -1,0 +1,16 @@
+[package]
+name = "lux"
+description = "Et lux fut"
+authors = ["Rareș <rares@getbetter.ro>"]
+version = "1.0.0"
+edition = "2021"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+opt-level = "z"
+lto = true
+strip = true
+
+[dependencies]
+itoa = "1.0.11"
