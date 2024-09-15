@@ -1,5 +1,4 @@
 mod cli;
-mod concat;
 
 use std::{
     fs,
@@ -16,8 +15,7 @@ use std::{
     process, str,
 };
 
-use concat::GhettoConcat;
-use cli::{help, parse_args, Mode};
+use cli::{help, parse_opts, Mode};
 
 type Res<T> = Result<T, IoError>;
 type Brightness = u32;
@@ -46,8 +44,7 @@ impl Controller {
             .spawn()?;
 
         if let Some(stdin) = tee.stdin.as_mut() {
-            let mut buffer = itoa::Buffer::new();
-            stdin.write_all(buffer.format(new_b).as_bytes())?;
+            stdin.write_all(format!("{}", new_b).as_bytes())?;
         }
 
         tee.wait()?;
@@ -56,15 +53,14 @@ impl Controller {
     }
 
     fn notify(&self) -> Res<()> {
-        let mut buf = itoa::Buffer::new();
-        let proc = GhettoConcat::new(
-            "int:value:".as_bytes(),
-            buf.format(self.b * 100 / self.max_b).as_bytes(),
-        );
-
         process::Command::new("notify-send")
             .arg(self.name()?)
-            .args(["-h", proc.as_str(), "-h", "string:synchronous:volume"])
+            .args([
+                "-h",
+                &format!("int:value:{}", self.b * 100 / self.max_b),
+                "-h",
+                "string:synchronous:volume",
+            ])
             .output()?;
         Ok(())
     }
@@ -126,12 +122,12 @@ fn best_controller(start_path: &PathBuf) -> Option<Controller> {
 }
 
 pub fn main() -> Res<()> {
-    let args = {
-        let args = parse_args();
-        if parse_args().is_err() {
+    let opts = {
+        let i_opts = parse_opts();
+        if i_opts.is_err() {
             help()
         }
-        args.unwrap()
+        i_opts.unwrap()
     };
 
     // there can be only one
@@ -140,10 +136,10 @@ pub fn main() -> Res<()> {
         process::exit(2);
     }
 
-    if let Some(mut controller) = best_controller(&args.start_path) {
-        let _ = match args.mode {
-            Mode::Up => Some(controller.step_up(args.num_steps)),
-            Mode::Down => Some(controller.step_down(args.num_steps)),
+    if let Some(mut controller) = best_controller(&opts.start_path) {
+        let _ = match opts.mode {
+            Mode::Up => Some(controller.step_up(opts.num_steps)),
+            Mode::Down => Some(controller.step_down(opts.num_steps)),
         }
         .and_then(|b| if controller.b != b { controller.set_brightness(b).ok() } else { None })
         .and_then(|_| controller.notify().ok());

@@ -42,7 +42,7 @@ pub fn help() {
     std::process::exit(0);
 }
 
-pub fn parse_args() -> Result<Opts, lexopt::Error> {
+pub fn parse_opts() -> Result<Opts, lexopt::Error> {
     let def_path = PathBuf::from(default_path());
     let mut mode = None;
     let mut start_path = None;
