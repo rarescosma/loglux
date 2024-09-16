@@ -5,12 +5,17 @@ authors = ["Rareș <rares@getbetter.ro>"]
 version = "1.0.0"
 edition = "2021"
 
-[profile.release]
-panic = "abort"
-codegen-units = 1
-opt-level = "z"
-lto = true
-strip = true
-
 [dependencies]
 lexopt = "0.3.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+
+[profile.smol]
+inherits = "release"
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1

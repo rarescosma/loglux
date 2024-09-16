@@ -1,0 +1,74 @@
+---
+kind: pipeline
+type: kubernetes
+name: apollo
+
+__dind_orb: &dind
+  image: hub.getbetter.ro/orbs/dind:blue
+  pull: always
+  volumes:
+    - name: dockersock
+      path: /var/run
+
+__rust_orb: &rust
+  image: hub.getbetter.ro/orbs/rust:blue
+  pull: always
+  volumes:
+    - name: dockersock
+      path: /var/run
+  environment:
+    SCCACHE_CREDS:
+      from_secret: sccache-creds
+
+steps:
+  - name: just-ci
+    <<: *rust
+    commands:
+      - /with-ci.sh just ci
+  - name: docker-daemon
+    <<: *dind
+    privileged: true
+    detach: true
+    when:
+      ref:
+        - refs/tags/*
+        - refs/heads/ci
+  - name: just-cross
+    <<: *rust
+    depends_on: [ "just-ci" ]
+    when:
+      ref:
+        - refs/tags/*
+        - refs/heads/ci
+    commands:
+      - while ! curl -s --unix-socket /var/run/docker.sock http://localhost/; do sleep 1; done
+      - /with-ci.sh config_only just cross
+      - mv target/x86_64-unknown-linux-musl/release/lux lux.x86_64-unknown-linux-musl
+      - ./lux.x86_64-unknown-linux-musl --help
+  - name: create-gitea-release
+    <<: *dind
+    depends_on: [ "just-cross" ]
+    when:
+      ref:
+        - refs/tags/*
+        - refs/heads/ci
+    environment:
+      TEA_TOKEN:
+        from_secret: tea-token
+    commands:
+      - tea login add --name getbetter --url gitea.getbetter.ro --token "$TEA_TOKEN"
+      - export TAG_NAME=$(echo $CI_COMMIT_REF | cut -d"/" -f3-)
+      - git fetch --tags -q
+      - |
+        tea releases create --tag $TAG_NAME --title $TAG_NAME --note "$(git-cliff --latest --strip all)" \
+        --asset lux.x86_64-unknown-linux-musl
+
+trigger:
+  ref:
+    - refs/tags/*
+    - refs/heads/main
+    - refs/heads/ci
+
+volumes:
+  - name: dockersock
+    temp: { }
