@@ -2,6 +2,9 @@ DEFAULT_RELEASE := "patch"
 RUSTFLAGS := "-Zlocation-detail=none -Zfmt-debug=none"
 CROSS_TARGET := "x86_64-unknown-linux-musl"
 
+_default:
+  @just --list
+
 ci:
   export CARGO_PROFILE_RELEASE_LTO=false
   cargo clippy --locked -- -D warnings
