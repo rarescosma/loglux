@@ -1,5 +1,6 @@
 [changelog]
 body = """
+{% set repo_prefix = get_env(name="REPO_PREFIX", default="") %}
 {% if version %}\
     ## {{ version | trim_start_matches(pat="v") }} - {{ timestamp | date(format="%Y-%m-%d") }}
 {% else %}\
@@ -9,13 +10,13 @@ body = """
     {% if previous.version and version %}
     ### Diff
 
-    [{{ previous.version }}...{{ version }}](compare/{{ previous.version }}...{{ version }})
+    [{{ previous.version }}...{{ version }}]({{repo_prefix}}compare/{{ previous.version }}...{{ version }})
     {% endif %}\
 {% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
     ### {{ group | upper_first }}
     {% for commit in commits %}
-        - {{ commit.message | split(pat="\n") | first | trim }} [#{{ commit.id | truncate(length=7, end="") }}](commit/{{ commit.id }})\
+        - {{ commit.message | split(pat="\n") | first | trim }} [#{{ commit.id | truncate(length=7, end="") }}]({{repo_prefix}}commit/{{ commit.id }})\
     {% endfor %}
 {% endfor %}\n
 """
@@ -24,6 +25,6 @@ body = """
 filter_unconventional = false
 conventional_commits = false
 commit_parsers = [
-    { message = "^chore: Release", skip = true},
-    { message = "^", group = "Changelog"},
+    { message = "^chore: Release", skip = true },
+    { message = "^", group = "Changelog" },
 ]

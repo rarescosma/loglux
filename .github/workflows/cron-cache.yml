@@ -1,0 +1,32 @@
+name: cron-cache
+
+on:
+  push:
+    branches:
+      - "dev/cron-cache-yml"
+  schedule:
+    - cron: "0 0 */5 * *"
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    name: trigger-cron-ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CI_TOKEN }}
+      - name: Push a special commit to the CI branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
+        shell: bash
+        run: |
+          ts="$(date "+%F@%T")"
+          git config --global user.name 'Github Actions'
+          git config --global user.email 'gh@getbetter.ro'
+          git branch -D ci-temp || true
+          git checkout -b ci-temp
+          git commit --allow-empty --message="[cron] $ts"
+          git push -u origin ci-temp:ci --force

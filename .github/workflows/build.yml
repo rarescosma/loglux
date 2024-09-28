@@ -1,0 +1,146 @@
+name: build
+
+on:
+  push:
+    branches:
+      - ci
+      - "dev/build-yml"
+      - "!main"
+
+permissions:
+  contents: write
+
+jobs:
+  get-version:
+    name: get-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Grab the version from Cargo.toml
+        shell: bash
+        run: |
+          cargo_version="v$(head -n5 Cargo.toml | grep -oE "version = \"[0-9\.]+\"" | cut -d'"' -f2)"
+          echo "VERSION=$cargo_version" >> $GITHUB_ENV
+    outputs:
+      version: ${{ env.VERSION }}
+
+  build-binaries:
+    name: build-binaries
+    needs: [ "get-version" ]
+    runs-on: ubuntu-latest
+    env:
+      CARGO: cross
+      TARGET_FLAGS:
+      TARGET_DIR: ./target
+      CROSS_VERSION: v0.2.5
+      RUST_BACKTRACE: 1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build: stable-x86_64
+            target: x86_64-unknown-linux-musl
+          - build: stable-x86
+            target: i686-unknown-linux-musl
+          - build: stable-aarch64
+            target: aarch64-unknown-linux-musl
+          - build: stable-armv7
+            target: armv7-unknown-linux-musleabi
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache sccache
+        id: cache_sccache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/sccache
+          key: ${{ matrix.target }}-sccache-${{ hashFiles('.cargo/config.toml') }}
+          restore-keys: |
+            ${{ matrix.target }}-sccache-${{ hashFiles('.cargo/config.toml') }}
+            ${{ matrix.target }}-sccache-
+
+      - name: Fix cache permissions
+        shell: bash
+        run: |
+          sudo mkdir -p /home/runner/.cache/sccache
+          sudo chown -R $(id -u) /home/runner/.cache/sccache
+          sudo chmod -R u+rwX /home/runner/.cache/sccache 
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Prepare Cross
+        shell: bash
+        run: |
+          dir="$RUNNER_TEMP/cross-download"
+          mkdir "$dir"
+          echo "$dir" >> $GITHUB_PATH
+          cd "$dir"
+          curl -LO "https://github.com/cross-rs/cross/releases/download/$CROSS_VERSION/cross-x86_64-unknown-linux-musl.tar.gz"
+          tar xf cross-x86_64-unknown-linux-musl.tar.gz
+          echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV
+          echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
+
+      - name: Show command used for Cargo
+        shell: bash
+        run: |
+          echo "cargo command is: ${{ env.CARGO }}"
+          echo "target flag is: ${{ env.TARGET_FLAGS }}"
+          echo "target dir is: ${{ env.TARGET_DIR }}"
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          export CROSS_CONTAINER_OPTS="-v /home/runner/.cache/sccache:/sccache:rw -e SCCACHE_DIR=/sccache"
+          ${{ env.CARGO }} build --release ${{ env.TARGET_FLAGS }}
+
+      - name: Determine archive name
+        shell: bash
+        run: |
+          version="${{ needs.get-version.outputs.version }}"
+          echo "ARCHIVE=loglux-$version-${{ matrix.target }}" >> $GITHUB_ENV
+
+      - name: Creating directory for archive
+        shell: bash
+        run: |
+          mkdir -p "$ARCHIVE"
+          cp "target/${{ matrix.target }}/release/loglux" "$ARCHIVE"/
+          cp {README.md,UNLICENSE} "$ARCHIVE"/
+
+      - name: Build archive (Unix)
+        shell: bash
+        run: |
+          tar czf "$ARCHIVE.tar.gz" "$ARCHIVE"
+          shasum -a 256 "$ARCHIVE.tar.gz" > "$ARCHIVE.tar.gz.sha256"
+          echo "ASSET=$ARCHIVE.tar.gz" >> $GITHUB_ENV
+          echo "ASSET_SUM=$ARCHIVE.tar.gz.sha256" >> $GITHUB_ENV
+
+      - name: Upload release archive
+        if: "github.ref == 'refs/heads/ci' && !contains(github.event.head_commit.message, '[cron]')"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          version="${{ needs.get-version.outputs.version }}"
+          gh release upload "$version" ${{ env.ASSET }} ${{ env.ASSET_SUM }}
+
+  promote-release:
+    if: "github.ref == 'refs/heads/ci' && !contains(github.event.head_commit.message, '[cron]')"
+    name: promote-release
+    needs: [ "build-binaries", "get-version" ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Promote release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          version="${{ needs.get-version.outputs.version }}"
+          gh release edit "$version" --draft=false --latest
