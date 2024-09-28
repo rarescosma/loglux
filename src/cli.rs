@@ -30,8 +30,8 @@ pub fn help() {
 pub fn parse_opts() -> Result<Opts, lexopt::Error> {
     let def_path = PathBuf::from(default_path());
     let mut mode = None;
-    let mut start_path = None;
-    let mut num_steps = None;
+    let mut start_path = Some(def_path);
+    let mut num_steps = Some(DEFAULT_NUM_STEPS as f64);
 
     let mut parser = lexopt::Parser::from_env();
     while let Some(arg) = parser.next()? {
@@ -44,18 +44,19 @@ pub fn parse_opts() -> Result<Opts, lexopt::Error> {
                 }
             }
             Short('p') | Long("path") => {
-                start_path = Some(PathBuf::from(parser.value()?));
+                start_path = parser.value().ok().map(PathBuf::from);
             }
             Short('n') | Long("num-steps") => {
-                num_steps = Some(parser.value()?.parse::<u32>()? as f64);
+                num_steps =
+                    parser.value().ok().and_then(|v| v.parse::<u32>().ok().map(|w| w as f64));
             }
             Short('h') | Long("help") => help(),
             _ => return Err(arg.unexpected()),
         }
     }
     Ok(Opts {
-        mode: mode.ok_or("missing mode")?,
-        start_path: start_path.unwrap_or(def_path),
-        num_steps: num_steps.unwrap_or(DEFAULT_NUM_STEPS as f64),
+        mode: mode.ok_or("invalid mode")?,
+        start_path: start_path.ok_or("invalid path")?,
+        num_steps: num_steps.ok_or("invalid number of steps")?,
     })
 }

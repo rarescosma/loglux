@@ -131,8 +131,10 @@ fn best_controller(start_path: &PathBuf) -> Option<Controller> {
 pub fn main() -> Res<()> {
     let opts = {
         let i_opts = parse_opts();
-        if i_opts.is_err() {
-            help()
+        if let Some(err) = i_opts.as_ref().err() {
+            eprintln!("error parsing arguments: {}", err);
+            help();
+            process::exit(1)
         }
         i_opts.unwrap()
     };
@@ -150,6 +152,9 @@ pub fn main() -> Res<()> {
         }
         .and_then(|b| if controller.b != b { controller.set_brightness(b).ok() } else { None })
         .and_then(|_| controller.notify().ok());
+    } else {
+        eprintln!("could not find any controller under {}", &opts.start_path.display());
+        process::exit(1)
     }
 
     Ok(())
