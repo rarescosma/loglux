@@ -1,25 +1,10 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::path::PathBuf;
 
 use lexopt::prelude::*;
 
 pub enum Mode {
     Up,
     Down,
-}
-
-impl TryFrom<&OsString> for Mode {
-    type Error = ();
-
-    fn try_from(value: &OsString) -> Result<Self, Self::Error> {
-        value
-            .to_str()
-            .and_then(|v| match v {
-                "up" => Some(Self::Up),
-                "down" => Some(Self::Down),
-                _ => None,
-            })
-            .ok_or(())
-    }
 }
 
 pub struct Opts {
@@ -51,7 +36,13 @@ pub fn parse_opts() -> Result<Opts, lexopt::Error> {
     let mut parser = lexopt::Parser::from_env();
     while let Some(arg) = parser.next()? {
         match arg {
-            Value(val) => mode = Mode::try_from(&val).ok(),
+            Value(val) => {
+                if val == "up" {
+                    mode = Some(Mode::Up);
+                } else if val == "down" {
+                    mode = Some(Mode::Down)
+                }
+            }
             Short('p') | Long("path") => {
                 start_path = Some(PathBuf::from(parser.value()?));
             }
