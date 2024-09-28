@@ -35,7 +35,7 @@ fn default_path() -> &'static str {
 
 pub fn help() {
     println!(
-        r#"Usage: lux up|down [-p|--path <PATH={}>] [-n|--num-steps <STEPS={:.0}]"#,
+        r#"Usage: loglux up|down [-p|--path (default: {})] [-n|--num-steps (default: {:.0})]"#,
         default_path(),
         DEFAULT_NUM_STEPS
     );

@@ -131,7 +131,7 @@ pub fn main() -> Res<()> {
     };
 
     // there can be only one
-    let s = SocketAddr::from_abstract_name("lux_lock".as_bytes())?;
+    let s = SocketAddr::from_abstract_name("loglux_lock".as_bytes())?;
     if UnixListener::bind_addr(&s).is_err() {
         process::exit(2);
     }

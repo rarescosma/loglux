@@ -43,8 +43,8 @@ steps:
     commands:
       - while ! curl -s --unix-socket /var/run/docker.sock http://localhost/; do sleep 1; done
       - /with-ci.sh config_only just cross
-      - mv target/x86_64-unknown-linux-musl/release/lux lux.x86_64-unknown-linux-musl
-      - ./lux.x86_64-unknown-linux-musl --help
+      - mv target/x86_64-unknown-linux-musl/release/loglux loglux.x86_64-unknown-linux-musl
+      - ./loglux.x86_64-unknown-linux-musl --help
   - name: create-gitea-release
     <<: *dind
     depends_on: [ "just-cross" ]
@@ -61,7 +61,7 @@ steps:
       - git fetch --tags -q
       - |
         tea releases create --tag $TAG_NAME --title $TAG_NAME --note "$(git-cliff --latest --strip all)" \
-        --asset lux.x86_64-unknown-linux-musl
+        --asset loglux.x86_64-unknown-linux-musl
 
 trigger:
   ref:
