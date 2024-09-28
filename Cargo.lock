@@ -16,7 +16,7 @@ checksum = "baff4b617f7df3d896f97fe922b64817f6cd9a756bb81d40f8883f2f66dcb401"
 
 [[package]]
 name = "loglux"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "lexopt",
  "num-traits",
