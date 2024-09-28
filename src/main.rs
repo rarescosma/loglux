@@ -105,6 +105,13 @@ fn best_controller(start_path: &PathBuf) -> Option<Controller> {
     let mut path: Option<PathBuf> = None;
     let mut best_max = 0;
 
+    if let (Some(max_b), Some(b)) = (
+        int_from_file(start_path.join("max_brightness")),
+        int_from_file(start_path.join("brightness")),
+    ) {
+        return Some(Controller { path: start_path.to_owned(), max_b, b });
+    }
+
     for entry in fs::read_dir(start_path).ok()?.flatten() {
         let c_path = entry.path();
         if let Some(max_b) = int_from_file(c_path.join("max_brightness")) {
