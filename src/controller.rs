@@ -10,27 +10,25 @@ use crate::{stepper::Bounded, Res};
 
 const BUFFER_SIZE: usize = 32;
 
+#[derive(Clone)]
 pub struct Controller {
     path: PathBuf,
-    max_brightness: u32,
-    brightness: u32,
+    max_brightness: u64,
+    brightness: u64,
 }
 
 impl Bounded for Controller {
-    type Inner = u32;
-
-    #[inline]
-    fn current(&self) -> Self::Inner { self.brightness }
-    #[inline]
-    fn max(&self) -> Self::Inner { self.max_brightness }
+    fn current(&self) -> u64 { self.brightness }
+    fn max(&self) -> u64 { self.max_brightness }
+    fn with_current(&self, brightness: u64) -> Self { Self { brightness, ..self.clone() } }
 }
 
 impl Controller {
-    pub fn new(path: PathBuf, max_brightness: u32, brightness: u32) -> Self {
+    pub fn new(path: PathBuf, max_brightness: u64, brightness: u64) -> Self {
         Self { path, max_brightness, brightness }
     }
 
-    pub fn set_brightness(&self, new_b: u32) -> Res<()> {
+    pub fn set_brightness(&self, new_b: u64) -> Res<()> {
         let mut tee = process::Command::new("sudo")
             .arg("tee")
             .arg(self.path.join("brightness"))
@@ -45,7 +43,7 @@ impl Controller {
         Ok(())
     }
 
-    pub fn notify(&self, new_b: u32) -> Res<()> {
+    pub fn notify(&self, new_b: u64) -> Res<()> {
         process::Command::new("notify-send")
             .arg(self.name()?)
             .args([

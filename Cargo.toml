@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 lexopt = "0.3.0"
-num-traits = "0.2.19"
 
 [profile.release]
 opt-level = 3
@@ -20,3 +19,7 @@ opt-level = "z"
 lto = true
 panic = "abort"
 codegen-units = 1
+
+[dev-dependencies]
+lazy_static = "1.5.0"
+quickcheck = "1.0.3"

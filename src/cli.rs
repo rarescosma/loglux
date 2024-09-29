@@ -10,10 +10,10 @@ pub enum Mode {
 pub struct Opts {
     pub mode: Mode,
     pub start_path: PathBuf,
-    pub num_steps: u32,
+    pub num_steps: u64,
 }
 
-const DEFAULT_NUM_STEPS: u32 = 75;
+const DEFAULT_NUM_STEPS: u64 = 75;
 fn default_path() -> &'static str { "/sys/class/backlight" }
 
 pub fn help() {
@@ -45,7 +45,7 @@ pub fn parse_opts() -> Result<Opts, lexopt::Error> {
                 start_path = parser.value().ok().map(PathBuf::from);
             }
             Short('n') | Long("num-steps") => {
-                num_steps = parser.value().ok().and_then(|v| v.parse::<u32>().ok());
+                num_steps = parser.value().ok().and_then(|v| v.parse::<u64>().ok());
             }
             Short('h') | Long("help") => help(),
             _ => return Err(arg.unexpected()),
