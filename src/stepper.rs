@@ -137,8 +137,7 @@ mod tests {
     fn test_step_down_lower() { quickcheck(step_down_lower as fn(DiffBase) -> TestResult); }
 
     fn step_invariantly(max: BaseNum, steps: BaseNum) -> TestResult {
-        // a number of steps that's half the max value should be enough
-        if max > MAX_MAX || !(2..(MAX_MAX >> 1)).contains(&steps) {
+        if !(1..=MAX_MAX).contains(&max) || !(1..=MAX_MAX).contains(&steps) {
             return TestResult::discard();
         }
 
