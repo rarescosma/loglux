@@ -6,8 +6,10 @@ _default:
   @just --list
 
 ci:
+  #!/usr/bin/env bash
   export CARGO_PROFILE_RELEASE_LTO=false
   cargo clippy --locked -- -D warnings
+  QUICKCHECK_TESTS="$((2**20))" RUST_LOG=quickcheck cargo test -- --nocapture
 
 release type=DEFAULT_RELEASE:
   #!/usr/bin/env bash
