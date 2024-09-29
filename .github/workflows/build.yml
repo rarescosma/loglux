@@ -40,10 +40,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/sccache
-          key: test-sccache-v0-${{ hashFiles('.cargo/config.toml') }}
-          restore-keys: |
-            test-sccache-v0-${{ hashFiles('.cargo/config.toml') }}
-            test-sccache-v0-
+          key: test-sccache-v0-${{ hashFiles('Cargo.lock') }}
       - name: Prep sccache
         shell: bash
         run: |
@@ -62,6 +59,7 @@ jobs:
       - name: Run the CI tests
         run: |
           just ci
+          sccache -s
 
   build-binaries:
     name: build-binaries
@@ -95,10 +93,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/sccache
-          key: ${{ matrix.target }}-sccache-${{ hashFiles('.cargo/config.toml') }}
-          restore-keys: |
-            ${{ matrix.target }}-sccache-${{ hashFiles('.cargo/config.toml') }}
-            ${{ matrix.target }}-sccache-
+          key: ${{ matrix.target }}-sccache-${{ hashFiles('Cargo.lock') }}
 
       - name: Fix cache permissions
         shell: bash
