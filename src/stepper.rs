@@ -160,7 +160,7 @@ mod tests {
             down_set.insert(sut.current);
         }
 
-        TestResult::from_bool(up_set.eq(&down_set))
+        TestResult::from_bool(up_set.len() >= 2 && up_set.eq(&down_set))
     }
 
     #[test]
