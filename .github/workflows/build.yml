@@ -24,9 +24,48 @@ jobs:
     outputs:
       version: ${{ env.VERSION }}
 
+  smoke-test:
+    name: smoke-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install rust
+        shell: bash
+        run: |
+          RUST_VERSION="$(grep -oP 'channel = "\K[^"]+' rust-toolchain.toml)"
+          rustup toolchain install $RUST_VERSION --profile minimal
+      - uses: extractions/setup-just@v2
+      - name: Cache sccache
+        id: cache_sccache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/sccache
+          key: test-sccache-v0-${{ hashFiles('.cargo/config.toml') }}
+          restore-keys: |
+            test-sccache-v0-${{ hashFiles('.cargo/config.toml') }}
+            test-sccache-v0-
+      - name: Prep sccache
+        shell: bash
+        run: |
+          curl --fail --location "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" --output /tmp/sccache.tar.gz
+          tar --directory "/usr/local/bin" -xzvf "/tmp/sccache.tar.gz" --strip-components 1 --wildcards "*/sccache"
+          rm /tmp/sccache.tar.gz
+          
+          sudo mkdir -p /home/runner/.cache/sccache
+          sudo chown -R $(id -u) /home/runner/.cache/sccache
+          sudo chmod -R u+rwX /home/runner/.cache/sccache 
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+          echo "SCCACHE_DIR=/home/runner/.cache/sccache" >> $GITHUB_ENV
+        env:
+          CARGO_UDEPS_VERSION: "v0.1.50"
+          SCCACHE_VERSION: "v0.8.1"
+      - name: Run the CI tests
+        run: |
+          just ci
+
   build-binaries:
     name: build-binaries
-    needs: [ "get-version" ]
+    needs: [ "get-version", "smoke-test" ]
     runs-on: ubuntu-latest
     env:
       CARGO: cross
