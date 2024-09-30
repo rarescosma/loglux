@@ -10,24 +10,64 @@ use crate::{cli::Opts, stepper::Bounded, Res};
 
 const BUFFER_SIZE: usize = 32;
 
-#[derive(Clone)]
-pub struct Controller {
-    path: PathBuf,
+#[derive(Copy, Clone)]
+pub struct Controller<'a> {
+    path: &'a PathBuf,
     max_brightness: u64,
     brightness: u64,
     num_steps: u64,
 }
 
-impl Bounded for Controller {
+impl Bounded for Controller<'_> {
     fn current(&self) -> u64 { self.brightness }
     fn max(&self) -> u64 { self.max_brightness }
     fn num_steps(&self) -> u64 { self.num_steps }
-    fn with_current(&self, brightness: u64) -> Self { Self { brightness, ..self.clone() } }
+    fn with_current(&self, brightness: u64) -> Self { Self { brightness, ..*self } }
 }
 
-impl Controller {
-    pub fn new(path: PathBuf, max_brightness: u64, brightness: u64, num_steps: u64) -> Self {
+impl<'a> Controller<'a> {
+    pub fn new(path: &'a PathBuf, max_brightness: u64, brightness: u64, num_steps: u64) -> Self {
         Self { path, max_brightness, brightness, num_steps }
+    }
+
+    pub fn from_opts(opts: &'a mut Opts) -> Option<Self> {
+        let mut max_brightness = 0;
+
+        if let (Some(max_brightness), Some(brightness)) = (
+            val_from_file(opts.start_path.join("max_brightness")),
+            val_from_file(opts.start_path.join("brightness")),
+        ) {
+            return Some(Controller::new(
+                &opts.start_path,
+                max_brightness,
+                brightness,
+                opts.num_steps,
+            ));
+        }
+
+        let mut found = false;
+
+        for entry in read_dir(&opts.start_path).ok()?.flatten() {
+            let c_path = entry.path();
+            if let Some(max_b) = val_from_file(c_path.join("max_brightness")) {
+                if max_b > max_brightness {
+                    max_brightness = max_b;
+                    opts.start_path = c_path;
+                    found = true;
+                }
+            }
+        }
+
+        if found {
+            let brightness = val_from_file(opts.start_path.join("brightness"))?;
+            return Some(Controller::new(
+                &opts.start_path,
+                max_brightness,
+                brightness,
+                opts.num_steps,
+            ));
+        }
+        None
     }
 
     pub fn set_brightness(&self, new_b: u64) -> Res<()> {
@@ -61,38 +101,6 @@ impl Controller {
     fn name(&self) -> Result<&str, IoError> {
         self.path.file_name().and_then(|f| f.to_str()).ok_or(IoError::from(ErrorKind::Other))
     }
-}
-
-pub fn best_controller(opts: &Opts) -> Option<Controller> {
-    let mut path: Option<PathBuf> = None;
-    let mut max_brightness = 0;
-
-    if let (Some(max_brightness), Some(brightness)) = (
-        val_from_file(opts.start_path.join("max_brightness")),
-        val_from_file(opts.start_path.join("brightness")),
-    ) {
-        return Some(Controller::new(
-            opts.start_path.to_owned(),
-            max_brightness,
-            brightness,
-            opts.num_steps,
-        ));
-    }
-
-    for entry in read_dir(&opts.start_path).ok()?.flatten() {
-        let c_path = entry.path();
-        if let Some(max_b) = val_from_file(c_path.join("max_brightness")) {
-            if max_b > max_brightness {
-                max_brightness = max_b;
-                path = Some(c_path);
-            }
-        }
-    }
-
-    path.and_then(|path| {
-        let brightness = val_from_file(path.join("brightness"))?;
-        Some(Controller::new(path, max_brightness, brightness, opts.num_steps))
-    })
 }
 
 fn val_from_file<V, P>(file: P) -> Option<V>
