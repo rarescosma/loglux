@@ -3,7 +3,6 @@ mod controller;
 mod stepper;
 
 use std::{
-    io::Error as IoError,
     os::{
         linux::net::SocketAddrExt,
         unix::net::{SocketAddr, UnixListener},
@@ -15,9 +14,10 @@ use cli::*;
 use controller::Controller;
 use stepper::{Bounded, Stepper};
 
-type Res<T> = Result<T, IoError>;
+type LuxErr = Box<dyn std::error::Error + Send + Sync + 'static>;
+type LuxRes<T> = Result<T, LuxErr>;
 
-pub fn main() -> Res<()> {
+pub fn main() -> LuxRes<()> {
     // there can be only one
     let s = SocketAddr::from_abstract_name("loglux_lock".as_bytes())?;
     UnixListener::bind_addr(&s).unwrap_or_else(|_| {
@@ -45,9 +45,9 @@ pub fn main() -> Res<()> {
         Mode::Down => controller.step_down(),
     };
     if new_brightness != controller.current() {
-        let _ = controller
+        controller
             .set_brightness(new_brightness)
-            .and_then(|_| controller.notify(new_brightness));
+            .and_then(|_| controller.notify(new_brightness))?;
     }
 
     Ok(())

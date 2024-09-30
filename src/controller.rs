@@ -1,12 +1,13 @@
 use std::{
     fs::{read_dir, File},
-    io::{Error as IoError, ErrorKind, Write},
+    io::{Result as IoResult, Write},
     os::unix::fs::FileExt,
     path::{Path, PathBuf},
-    process, str,
+    process::{Command, Output, Stdio},
+    str,
 };
 
-use crate::{cli::Opts, stepper::Bounded, Res};
+use crate::{cli::Opts, stepper::Bounded, LuxRes};
 
 const BUFFER_SIZE: usize = 32;
 
@@ -26,25 +27,20 @@ impl Bounded for Controller<'_> {
 }
 
 impl<'a> Controller<'a> {
-    pub fn new(path: &'a PathBuf, max_brightness: u64, brightness: u64, num_steps: u64) -> Self {
-        Self { path, max_brightness, brightness, num_steps }
-    }
-
     pub fn from_opts(opts: &'a mut Opts) -> Option<Self> {
-        let mut max_brightness = 0;
-
         if let (Some(max_brightness), Some(brightness)) = (
             val_from_file(opts.start_path.join("max_brightness")),
             val_from_file(opts.start_path.join("brightness")),
         ) {
-            return Some(Controller::new(
-                &opts.start_path,
+            return Some(Controller {
+                path: &opts.start_path,
                 max_brightness,
                 brightness,
-                opts.num_steps,
-            ));
+                num_steps: opts.num_steps,
+            });
         }
 
+        let mut max_brightness = 0;
         let mut found = false;
 
         for entry in read_dir(&opts.start_path).ok()?.flatten() {
@@ -60,46 +56,63 @@ impl<'a> Controller<'a> {
 
         if found {
             let brightness = val_from_file(opts.start_path.join("brightness"))?;
-            return Some(Controller::new(
-                &opts.start_path,
+            return Some(Controller {
+                path: &opts.start_path,
                 max_brightness,
                 brightness,
-                opts.num_steps,
-            ));
+                num_steps: opts.num_steps,
+            });
         }
         None
     }
 
-    pub fn set_brightness(&self, new_b: u64) -> Res<()> {
-        let mut tee = process::Command::new("sudo")
+    pub fn set_brightness(&self, new_b: u64) -> LuxRes<()> {
+        let mut tee = Command::new("sudo")
             .arg("tee")
             .arg(self.path.join("brightness"))
-            .stdin(process::Stdio::piped())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()?;
 
-        if let Some(stdin) = tee.stdin.as_mut() {
+        {
+            let mut stdin = tee.stdin.take().ok_or("could not capture tee's stdin")?;
             stdin.write_all(format!("{}", new_b).as_bytes())?;
         }
 
-        tee.wait()?;
-        Ok(())
+        cmd_result("tee", tee.wait_with_output())
     }
 
-    pub fn notify(&self, new_b: u64) -> Res<()> {
-        process::Command::new("notify-send")
-            .arg(self.name()?)
+    pub fn notify(&self, new_b: u64) -> LuxRes<()> {
+        let output = Command::new("notify-send")
             .args([
+                self.name()?,
                 "-h",
                 &format!("int:value:{}", new_b * 100 / self.max_brightness),
                 "-h",
                 "string:synchronous:volume",
             ])
-            .output()?;
-        Ok(())
+            .output();
+
+        cmd_result("notify-send", output)
     }
 
-    fn name(&self) -> Result<&str, IoError> {
-        self.path.file_name().and_then(|f| f.to_str()).ok_or(IoError::from(ErrorKind::Other))
+    fn name(&self) -> LuxRes<&str> {
+        self.path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .ok_or("could not determine controller name".into())
+    }
+}
+
+fn cmd_result(cmd_name: &str, output: IoResult<Output>) -> LuxRes<()> {
+    match output {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => {
+            let stderr = str::from_utf8(&out.stderr).unwrap_or_default().trim();
+            Err(format!("{} failed: {}", cmd_name, stderr).into())
+        }
+        Err(e) => Err(format!("{} failed: {e}", cmd_name).into()),
     }
 }
 
