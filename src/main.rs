@@ -31,14 +31,14 @@ pub fn main() -> Res<()> {
         process::exit(1);
     });
 
-    let controller = best_controller(&opts.start_path).unwrap_or_else(|| {
+    let controller = best_controller(&opts).unwrap_or_else(|| {
         eprintln!("could not find any controller under {}", &opts.start_path.display());
         process::exit(1)
     });
 
     let new_brightness = match opts.mode {
-        Mode::Up => controller.step_up(opts.num_steps),
-        Mode::Down => controller.step_down(opts.num_steps),
+        Mode::Up => controller.step_up(),
+        Mode::Down => controller.step_down(),
     };
     if new_brightness != controller.current() {
         let _ = controller

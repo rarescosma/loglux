@@ -6,7 +6,7 @@ use std::{
     process, str,
 };
 
-use crate::{stepper::Bounded, Res};
+use crate::{cli::Opts, stepper::Bounded, Res};
 
 const BUFFER_SIZE: usize = 32;
 
@@ -15,17 +15,19 @@ pub struct Controller {
     path: PathBuf,
     max_brightness: u64,
     brightness: u64,
+    num_steps: u64,
 }
 
 impl Bounded for Controller {
     fn current(&self) -> u64 { self.brightness }
     fn max(&self) -> u64 { self.max_brightness }
+    fn num_steps(&self) -> u64 { self.num_steps }
     fn with_current(&self, brightness: u64) -> Self { Self { brightness, ..self.clone() } }
 }
 
 impl Controller {
-    pub fn new(path: PathBuf, max_brightness: u64, brightness: u64) -> Self {
-        Self { path, max_brightness, brightness }
+    pub fn new(path: PathBuf, max_brightness: u64, brightness: u64, num_steps: u64) -> Self {
+        Self { path, max_brightness, brightness, num_steps }
     }
 
     pub fn set_brightness(&self, new_b: u64) -> Res<()> {
@@ -61,18 +63,23 @@ impl Controller {
     }
 }
 
-pub fn best_controller(start_path: &PathBuf) -> Option<Controller> {
+pub fn best_controller(opts: &Opts) -> Option<Controller> {
     let mut path: Option<PathBuf> = None;
     let mut max_brightness = 0;
 
     if let (Some(max_brightness), Some(brightness)) = (
-        val_from_file(start_path.join("max_brightness")),
-        val_from_file(start_path.join("brightness")),
+        val_from_file(opts.start_path.join("max_brightness")),
+        val_from_file(opts.start_path.join("brightness")),
     ) {
-        return Some(Controller::new(start_path.to_owned(), max_brightness, brightness));
+        return Some(Controller::new(
+            opts.start_path.to_owned(),
+            max_brightness,
+            brightness,
+            opts.num_steps,
+        ));
     }
 
-    for entry in read_dir(start_path).ok()?.flatten() {
+    for entry in read_dir(&opts.start_path).ok()?.flatten() {
         let c_path = entry.path();
         if let Some(max_b) = val_from_file(c_path.join("max_brightness")) {
             if max_b > max_brightness {
@@ -84,7 +91,7 @@ pub fn best_controller(start_path: &PathBuf) -> Option<Controller> {
 
     path.and_then(|path| {
         let brightness = val_from_file(path.join("brightness"))?;
-        Some(Controller::new(path, max_brightness, brightness))
+        Some(Controller::new(path, max_brightness, brightness, opts.num_steps))
     })
 }
 
