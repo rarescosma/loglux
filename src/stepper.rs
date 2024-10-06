@@ -74,7 +74,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{cmp::max, collections::HashSet};
 
     use quickcheck::*;
 
@@ -83,31 +83,6 @@ mod tests {
     type BaseNum = u16;
 
     const MAX_MAX: BaseNum = 2 << 12;
-
-    #[derive(Copy, Clone, Debug)]
-    struct DiffBase {
-        base: BaseNum,
-        diff: BaseNum,
-        num_steps: BaseNum,
-    }
-
-    impl Arbitrary for DiffBase {
-        fn arbitrary(g: &mut Gen) -> Self {
-            Self {
-                diff: BaseNum::arbitrary(g),
-                base: BaseNum::arbitrary(g),
-                num_steps: BaseNum::arbitrary(g),
-            }
-        }
-    }
-
-    impl DiffBase {
-        fn is_boring(&self) -> bool {
-            !(1..MAX_MAX / 2).contains(&self.diff)
-                || self.base > MAX_MAX / 2 - 1
-                || self.num_steps < 1
-        }
-    }
 
     #[derive(Copy, Clone, Debug)]
     struct MockBounded {
@@ -123,59 +98,44 @@ mod tests {
         fn with_current(&self, current: Num) -> Self { Self { current, ..*self } }
     }
 
-    impl From<&DiffBase> for MockBounded {
-        fn from(db: &DiffBase) -> Self {
-            MockBounded {
-                current: db.base as Num,
-                max: (db.base + db.diff) as Num,
-                num_steps: db.num_steps as Num,
+    impl Arbitrary for MockBounded {
+        fn arbitrary(g: &mut Gen) -> Self {
+            let current = BaseNum::arbitrary(g) % (MAX_MAX / 2 - 1);
+            Self {
+                current: current as _,
+                max: (current + max(1, BaseNum::arbitrary(g) % (MAX_MAX / 2))) as _,
+                num_steps: max(1, BaseNum::arbitrary(g) % MAX_MAX) as _,
             }
         }
     }
 
-    fn step_up_higher(db: DiffBase) -> TestResult {
-        if db.is_boring() {
-            return TestResult::discard();
-        }
-
-        let sut = MockBounded::from(&db);
+    fn step_up_higher(sut: MockBounded) -> TestResult {
         TestResult::from_bool(sut.step_up() > sut.current())
     }
 
     #[test]
-    fn test_step_up_higher() { quickcheck(step_up_higher as fn(DiffBase) -> TestResult); }
+    fn test_step_up_higher() { quickcheck(step_up_higher as fn(_) -> TestResult); }
 
-    fn step_down_lower(db: DiffBase) -> TestResult {
-        if db.is_boring() {
-            return TestResult::discard();
-        }
-
-        let sut = MockBounded::from(&db);
+    fn step_down_lower(sut: MockBounded) -> TestResult {
         TestResult::from_bool(sut.step_down() <= sut.current())
     }
 
     #[test]
-    fn test_step_down_lower() { quickcheck(step_down_lower as fn(DiffBase) -> TestResult); }
+    fn test_step_down_lower() { quickcheck(step_down_lower as fn(_) -> TestResult); }
 
-    fn step_invariantly(max: BaseNum, num_steps: BaseNum) -> TestResult {
-        if !(1..=MAX_MAX).contains(&max) || !(1..=MAX_MAX).contains(&num_steps) {
-            return TestResult::discard();
-        }
-
-        let max = max as Num;
-        let num_steps = num_steps as Num;
-
-        let mut sut = MockBounded { current: 0, max, num_steps };
+    fn step_invariantly(sut: MockBounded) -> TestResult {
+        let mut sut = sut;
+        sut.current = 0;
 
         let mut up_set = HashSet::new();
         up_set.insert(0);
-        while sut.current < max {
+        while sut.current < sut.max {
             sut = sut.with_current(sut.step_up());
             up_set.insert(sut.current);
         }
 
         let mut down_set = HashSet::new();
-        down_set.insert(max);
+        down_set.insert(sut.max);
         while sut.current > 0 {
             sut = sut.with_current(sut.step_down());
             down_set.insert(sut.current);
@@ -185,7 +145,5 @@ mod tests {
     }
 
     #[test]
-    fn test_step_invariantly() {
-        quickcheck(step_invariantly as fn(BaseNum, BaseNum) -> TestResult);
-    }
+    fn test_step_invariantly() { quickcheck(step_invariantly as fn(_) -> TestResult); }
 }
