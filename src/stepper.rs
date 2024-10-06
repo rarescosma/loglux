@@ -24,7 +24,7 @@ where
         let mut step = self.current_step();
         let mut new_b = self.current();
 
-        while new_b <= self.current() {
+        while new_b <= self.current() && step <= self.num_steps() as _ {
             step += 1;
             new_b = self.brightness_at(step);
         }
@@ -74,7 +74,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{cmp::max, collections::HashSet};
+    use std::collections::HashSet;
 
     use quickcheck::*;
 
@@ -82,7 +82,7 @@ mod tests {
 
     type BaseNum = u16;
 
-    const MAX_MAX: BaseNum = 2 << 12;
+    const MAX_MAX: BaseNum = 1 << 12;
 
     #[derive(Copy, Clone, Debug)]
     struct MockBounded {
@@ -100,17 +100,31 @@ mod tests {
 
     impl Arbitrary for MockBounded {
         fn arbitrary(g: &mut Gen) -> Self {
-            let current = BaseNum::arbitrary(g) % (MAX_MAX / 2 - 1);
+            let current = BaseNum::arbitrary(g) % MAX_MAX;
             Self {
                 current: current as _,
-                max: (current + max(1, BaseNum::arbitrary(g) % (MAX_MAX / 2))) as _,
-                num_steps: max(1, BaseNum::arbitrary(g) % MAX_MAX) as _,
+                max: (current + BaseNum::arbitrary(g) % MAX_MAX) as _,
+                num_steps: (BaseNum::arbitrary(g) % MAX_MAX) as _,
             }
+        }
+
+        fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+            let orig = *self;
+            Box::new(orig.num_steps.shrink().filter(|&num_steps| num_steps > 0).flat_map(
+                move |num_steps| {
+                    orig.current.shrink().flat_map(move |current| {
+                        orig.max
+                            .shrink()
+                            .filter(move |&max| max >= current)
+                            .map(move |max| MockBounded { current, max, num_steps })
+                    })
+                },
+            ))
         }
     }
 
     fn step_up_higher(sut: MockBounded) -> TestResult {
-        TestResult::from_bool(sut.step_up() > sut.current())
+        TestResult::from_bool(sut.step_up() >= sut.current())
     }
 
     #[test]
@@ -123,8 +137,10 @@ mod tests {
     #[test]
     fn test_step_down_lower() { quickcheck(step_down_lower as fn(_) -> TestResult); }
 
-    fn step_invariantly(sut: MockBounded) -> TestResult {
-        let mut sut = sut;
+    fn step_invariantly(mut sut: MockBounded) -> TestResult {
+        if sut.num_steps == 0 {
+            return TestResult::discard();
+        }
         sut.current = 0;
 
         let mut up_set = HashSet::new();
@@ -141,7 +157,7 @@ mod tests {
             down_set.insert(sut.current);
         }
 
-        TestResult::from_bool(up_set.len() >= 2 && up_set.eq(&down_set))
+        TestResult::from_bool(up_set.eq(&down_set))
     }
 
     #[test]

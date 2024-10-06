@@ -9,7 +9,7 @@ ci:
   #!/usr/bin/env bash
   export CARGO_PROFILE_RELEASE_LTO=false
   cargo clippy --locked -- -D warnings
-  QUICKCHECK_TESTS="$((2**13))" RUST_LOG=quickcheck cargo test -- --nocapture --test-threads=1
+  QUICKCHECK_TESTS="$((2**14))" RUST_LOG=quickcheck cargo test -- --nocapture --test-threads=1
 
 release type=DEFAULT_RELEASE:
   #!/usr/bin/env bash
