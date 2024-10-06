@@ -11,7 +11,6 @@ use crate::{cli::Opts, stepper::Bounded, LuxRes};
 
 const BUFFER_SIZE: usize = 32;
 
-#[derive(Copy, Clone)]
 pub struct Controller<'a> {
     path: &'a PathBuf,
     max_brightness: u64,
