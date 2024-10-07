@@ -15,7 +15,7 @@ body = """
 {% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
     ### {{ group | upper_first }}
-    {% for commit in commits %}
+    {% for commit in commits | reverse %}
         - {{ commit.message | split(pat="\n") | first | trim }} [#{{ commit.id | truncate(length=7, end="") }}]({{repo_prefix}}commit/{{ commit.id }})\
     {% endfor %}
 {% endfor %}\n

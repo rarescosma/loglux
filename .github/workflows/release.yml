@@ -40,10 +40,11 @@ jobs:
           args: --latest --strip all
         env:
           REPO_PREFIX: ${{ github.server_url }}/${{ github.repository }}/
+          OUTPUT: release-notes.md
       - name: Create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create $VERSION --draft --verify-tag --title $VERSION --notes "${{ steps.git-cliff.outputs.content }}"
+        run: gh release create $VERSION --draft --verify-tag --title $VERSION -F release-notes.md
       - name: Push to CI branch
         env:
           GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
