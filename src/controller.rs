@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fs::{read_dir, File},
     io::{Result as IoResult, Write},
     os::unix::fs::FileExt,
@@ -11,8 +12,9 @@ use crate::{cli::Opts, stepper::Bounded, LuxRes};
 
 const BUFFER_SIZE: usize = 32;
 
-pub struct Controller<'a> {
-    path: &'a PathBuf,
+#[derive(Clone)]
+pub struct Controller<'p> {
+    pub path: Cow<'p, PathBuf>,
     max_brightness: u64,
     brightness: u64,
     num_steps: u64,
@@ -22,17 +24,19 @@ impl Bounded for Controller<'_> {
     fn current(&self) -> u64 { self.brightness }
     fn max(&self) -> u64 { self.max_brightness }
     fn num_steps(&self) -> u64 { self.num_steps }
-    fn with_current(&self, brightness: u64) -> Self { Self { brightness, ..*self } }
+    fn with_current(&self, brightness: u64) -> Self { Self { brightness, ..self.clone() } }
 }
 
-impl<'a> Controller<'a> {
-    pub fn from_opts(opts: &'a mut Opts) -> Option<Self> {
+impl<'p> Controller<'p> {
+    pub fn from_opts(opts: &'p Opts) -> Option<Self> {
+        let mut path = Cow::Borrowed(&opts.start_path);
+
         if let (Some(max_brightness), Some(brightness)) = (
             val_from_file(opts.start_path.join("max_brightness")),
             val_from_file(opts.start_path.join("brightness")),
         ) {
             return Some(Controller {
-                path: &opts.start_path,
+                path,
                 max_brightness,
                 brightness,
                 num_steps: opts.num_steps,
@@ -41,22 +45,23 @@ impl<'a> Controller<'a> {
 
         let mut max_brightness = 0;
         let mut found = false;
+        let start_path = path.to_mut();
 
         for entry in read_dir(&opts.start_path).ok()?.flatten() {
             let c_path = entry.path();
             if let Some(max_b) = val_from_file(c_path.join("max_brightness")) {
                 if max_b > max_brightness {
                     max_brightness = max_b;
-                    opts.start_path = c_path;
+                    *start_path = c_path;
                     found = true;
                 }
             }
         }
 
         if found {
-            let brightness = val_from_file(opts.start_path.join("brightness"))?;
+            let brightness = val_from_file(start_path.join("brightness"))?;
             return Some(Controller {
-                path: &opts.start_path,
+                path,
                 max_brightness,
                 brightness,
                 num_steps: opts.num_steps,

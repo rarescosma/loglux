@@ -18,15 +18,13 @@ type LuxErr = Box<dyn std::error::Error + Send + Sync + 'static>;
 type LuxRes<T> = Result<T, LuxErr>;
 
 pub fn main() -> LuxRes<()> {
-    let mut opts = parse_opts().unwrap_or_else(|e| {
+    let opts = parse_opts().unwrap_or_else(|e| {
         eprintln!("error parsing arguments: {}", e);
         help();
         process::exit(1);
     });
 
-    let mode = opts.mode;
-
-    let controller = match Controller::from_opts(&mut opts) {
+    let controller = match Controller::from_opts(&opts) {
         Some(c) => c,
         None => {
             eprintln!("could not find any controller under {}", &opts.start_path.display());
@@ -34,7 +32,7 @@ pub fn main() -> LuxRes<()> {
         }
     };
 
-    let new_brightness = match mode {
+    let new_brightness = match opts.mode {
         Mode::Up => controller.step_up(),
         Mode::Down => controller.step_down(),
     };

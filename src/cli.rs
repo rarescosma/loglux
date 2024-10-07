@@ -15,21 +15,19 @@ pub struct Opts {
 }
 
 const DEFAULT_NUM_STEPS: u64 = 75;
-fn default_path() -> &'static str { "/sys/class/backlight" }
+const DEFAULT_PATH: &str = "/sys/class/backlight";
 
 pub fn help() {
     println!(
         r#"Usage: loglux up|down [-p|--path (default: {})] [-n|--num-steps (default: {:.0})]"#,
-        default_path(),
-        DEFAULT_NUM_STEPS
+        DEFAULT_PATH, DEFAULT_NUM_STEPS
     );
     std::process::exit(0);
 }
 
 pub fn parse_opts() -> Result<Opts, Error> {
-    let def_path = PathBuf::from(default_path());
     let mut mode = Err(Error::from("missing mode"));
-    let mut start_path = Ok(def_path);
+    let mut start_path = Ok(PathBuf::from(DEFAULT_PATH));
     let mut num_steps = Ok(DEFAULT_NUM_STEPS);
 
     let mut parser = lexopt::Parser::from_env();
